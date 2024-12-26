@@ -56,25 +56,27 @@ void Llm::load() {
     printf("Load Module Done!\n");
 }
 
-Value Llm::forward(const std::vector<int>& input_ids) {
+nncase::tensor Llm::forward(const std::vector<int>& input_ids) {
     int seq_len = input_ids.size();
-    std::vector<Value> inputs;
+    std::vector<nncase::value_t> inputs;
     inputs.emplace_back(embedding(input_ids));
     inputs.emplace_back(gen_attention_mask(seq_len));
     inputs.emplace_back(gen_position_ids(seq_len));
     inputs.emplace_back(std::move(past_key_values_));
     auto outputs = module_->onForward(inputs);
-    auto logits = std::move(outputs[0]);
-    past_key_values_ = std::move(outputs[1]);
+    auto logits = outputs->fields()[0].as<nncase::tensor>().unwrap_or_throw();
+    past_key_values_ = std::move(outputs->fields()[1]);
     all_seq_len_ += seq_len;
     gen_seq_len_++;
     return logits;
 }
 
-int Llm::sample(Value& logits, const std::vector<int>& pre_ids) {
+int Llm::sample(nncase::tensor& logits, const std::vector<int>& pre_ids) {
     std::unordered_set<int> ids_set(pre_ids.begin(), pre_ids.end());
-    auto scores = logits.GetTensorMutableData<float>();
-    auto shape = logits.GetTensorTypeAndShapeInfo().GetShape();
+    auto logits_buffer = logits->buffer().as_host().unwrap_or_throw();
+    auto logits_mapped = logits_buffer.map(nncase::runtime::map_read).unwrap_or_throw();
+    auto scores = logits_mapped.buffer().as_span<float>();
+    auto shape = logits->shape();
     auto size = std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<int64_t>());
     // repetition penalty
     const float repetition_penalty = 1.1;
@@ -282,11 +284,14 @@ Llm::~Llm() {
     runtime_manager_.reset();
 }
 
-Value Llm::embedding(const std::vector<int>& input_ids) {
+nncase::value_t Llm::embedding(const std::vector<int>& input_ids) {
     // disk embedding to save memory
     int hidden_size = config_->hidden_size();
     int seq_len = static_cast<int>(input_ids.size());
     auto inputs_embeds = _Input<float>({seq_len, 1, hidden_size}, runtime_manager_);
+    auto inputs_embeds_buffer = inputs_embeds->buffer().as_host().unwrap_or_throw();
+    auto inputs_embeds_mapped = inputs_embeds_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
+    auto inputs_embeds_ptr = inputs_embeds_mapped.buffer().as_span<int16_t>().data();
     size_t size = hidden_size * sizeof(int16_t);
     FILE* file = fopen(config_->embedding_file().c_str(), "rb");
     std::unique_ptr<int16_t[]> buffer(new int16_t[hidden_size]);
@@ -294,7 +299,7 @@ Value Llm::embedding(const std::vector<int>& input_ids) {
         fseek(file, input_ids[i] * size, SEEK_SET);
         size_t bytes_read = fread(buffer.get(), 1, size, file);
         (void)bytes_read;
-        auto ptr = inputs_embeds.GetTensorMutableData<int16_t>() + i * hidden_size * 2;
+        auto ptr = inputs_embeds_ptr + i * hidden_size * 2;
         for (int j = 0; j < hidden_size; j++) {
             ptr[j * 2] = 0;
             ptr[j * 2 + 1] = buffer[j];
@@ -314,14 +319,16 @@ std::string Llm::decode(int id) {
     return word;
 }
 
-Value Llm::gen_attention_mask(int seq_len) {
+nncase::value_t Llm::gen_attention_mask(int seq_len) {
     int kv_seq_len = all_seq_len_ + seq_len;
     if (seq_len == 1) {
         kv_seq_len = seq_len;
     }
     if (config_->attention_mask() == "float") {
         auto attention_mask = _Input<float>({1, 1, seq_len, kv_seq_len}, runtime_manager_);
-        auto ptr = attention_mask.GetTensorMutableData<float>();
+        auto attention_mask_buffer = attention_mask->buffer().as_host().unwrap_or_throw();
+        auto attention_mask_mapped = attention_mask_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
+        auto ptr = attention_mask_mapped.buffer().as_span<float>().data();
         for (int i = 0; i < seq_len; i++) {
             for (int j = 0; j < kv_seq_len; j++) {
                 int row = i + all_seq_len_;
@@ -331,7 +338,9 @@ Value Llm::gen_attention_mask(int seq_len) {
         return attention_mask;
     } else {
         auto attention_mask = _Input<int>({1, 1, seq_len, kv_seq_len}, runtime_manager_);
-        auto ptr = attention_mask.GetTensorMutableData<int>();
+        auto attention_mask_buffer = attention_mask->buffer().as_host().unwrap_or_throw();
+        auto attention_mask_mapped = attention_mask_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
+        auto ptr = attention_mask_mapped.buffer().as_span<int>().data();
         if (config_->attention_mask() == "glm") {
             // chatglm
             for (int i = 0; i < seq_len * kv_seq_len; i++) {
@@ -355,11 +364,13 @@ Value Llm::gen_attention_mask(int seq_len) {
     }
 }
 
-Value Llm::gen_position_ids(int seq_len) {
+nncase::value_t Llm::gen_position_ids(int seq_len) {
     if (config_->attention_mask() == "glm") {
         // chatglm
         auto position_ids = _Input<int>({1, 2, seq_len}, runtime_manager_);
-        auto ptr = position_ids.GetTensorMutableData<int>();
+        auto position_ids_buffer = position_ids->buffer().as_host().unwrap_or_throw();
+        auto position_ids_mapped = position_ids_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
+        auto ptr = position_ids_mapped.buffer().as_span<int>().data();
         if (seq_len == 1) {
             ptr[0] = all_seq_len_ - gen_seq_len_ - 2;
             ptr[1] = gen_seq_len_ + 1;
@@ -375,7 +386,9 @@ Value Llm::gen_position_ids(int seq_len) {
     } else {
         bool is_glm2 = config_->attention_mask() == "glm2";
         auto position_ids = _Input<int>({1, seq_len}, runtime_manager_);
-        auto ptr = position_ids.GetTensorMutableData<int>();
+        auto position_ids_buffer = position_ids->buffer().as_host().unwrap_or_throw();
+        auto position_ids_mapped = position_ids_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
+        auto ptr = position_ids_mapped.buffer().as_span<int>().data();
         if (seq_len == 1) {
             ptr[0] = is_glm2 ? gen_seq_len_ : all_seq_len_;
         } else {

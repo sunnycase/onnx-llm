@@ -8,6 +8,8 @@
 #ifndef LLM_hpp
 #define LLM_hpp
 
+#define ORT 0
+
 #include <vector>
 #include <memory>
 #include <string>
@@ -17,7 +19,11 @@
 #include <functional>
 #include <unordered_map>
 
+#if ORT
 #include "ortwrapper.hpp"
+#else
+#include "nncasewrapper.hpp"
+#endif
 #include "tokenizer.hpp"
 #include "json.hpp"
 
@@ -69,8 +75,8 @@ public:
     void reset();
     static Llm* createLLM(const std::string& config_path);
     virtual void load();
-    Value forward(const std::vector<int>& input_ids);
-    int sample(Value& logits, const std::vector<int>& pre_ids);
+    nncase::tensor forward(const std::vector<int>& input_ids);
+    int sample(nncase::tensor& logits, const std::vector<int>& pre_ids);
     std::string apply_prompt_template(const std::string& user_content) const;
     std::string apply_chat_template(const std::vector<PromptItem>& chat_prompts) const;
     std::string response(const std::string& user_content, std::ostream* os = &std::cout, const char* end_with = nullptr);
@@ -98,16 +104,16 @@ protected:
     std::shared_ptr<LlmConfig> config_;
     std::shared_ptr<Tokenizer> tokenizer_;
     std::vector<int> key_value_shape_ = {};
-    Value past_key_values_ {nullptr};
+    nncase::value_t past_key_values_ {nullptr};
     std::shared_ptr<RuntimeManager> runtime_manager_;
     std::shared_ptr<Module> module_;
     void init_runtime();
     std::string decode(int id);
     bool is_stop(int token_id);
     virtual std::vector<int> tokenizer(const std::string& query);
-    virtual Value embedding(const std::vector<int>& input_ids);
-    virtual Value gen_attention_mask(int seq_len);
-    virtual Value gen_position_ids(int seq_len);
+    virtual nncase::value_t embedding(const std::vector<int>& input_ids);
+    virtual nncase::value_t gen_attention_mask(int seq_len);
+    virtual nncase::value_t gen_position_ids(int seq_len);
 };
 // Llm end
 

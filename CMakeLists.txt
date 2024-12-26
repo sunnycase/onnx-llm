@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.5)
 project(onnx-llm)
 
+find_package(nncase REQUIRED)
+
 option(BUILD_FOR_ANDROID "Build for android whith mini memory mode." OFF)
 option(LLM_SUPPORT_VISION "Llm model support vision input." OFF)
 option(DUMP_PROFILE_INFO "Dump profile info when chat." OFF)
@@ -26,7 +28,8 @@ include_directories(${ONNXRUNTIME_PATH}/include
 FILE(GLOB SRCS ${CMAKE_CURRENT_LIST_DIR}/src/*.cpp)
 
 add_library(llm STATIC ${SRCS})
-target_link_libraries(llm onnxruntime)
+target_link_libraries(llm PRIVATE onnxruntime)
+target_link_libraries(llm PUBLIC nncaseruntime)
 
 add_executable(cli_demo ${CMAKE_SOURCE_DIR}/demo/cli_demo.cpp)
 target_link_libraries(cli_demo llm)

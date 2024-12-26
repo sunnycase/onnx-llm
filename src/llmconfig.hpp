@@ -80,8 +80,12 @@ public:
 
     // < model file config start
     DEFINE_CONFIG_PATH_ACCESSOR(llm_config, "llm_config.json")
-    DEFINE_CONFIG_PATH_ACCESSOR(llm_model, "llm.mnn")
-    DEFINE_CONFIG_PATH_ACCESSOR(llm_weight, "llm.mnn.weight")
+#if ORT
+    DEFINE_CONFIG_PATH_ACCESSOR(llm_model, "onnx/llm.onnx")
+#else
+    DEFINE_CONFIG_PATH_ACCESSOR(llm_model, "llm.kmodel")
+#endif
+    DEFINE_CONFIG_PATH_ACCESSOR(llm_weight, "onnx/llm.onnx.data")
     DEFINE_CONFIG_PATH_ACCESSOR(lm_model, "lm.mnn")
     DEFINE_CONFIG_PATH_ACCESSOR(embedding_model, "embedding.mnn")
     DEFINE_CONFIG_PATH_ACCESSOR(embedding_file, "embeddings_bf16.bin")
