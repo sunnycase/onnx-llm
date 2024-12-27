@@ -10,6 +10,8 @@
 
 #include <memory>
 #include <nncase/runtime/interpreter.h>
+#include <nncase/runtime/simple_types.h>
+#include <type_traits>
 
 namespace Ort {
 
@@ -42,9 +44,11 @@ private:
 
 template <typename T>
 static nncase::tensor _Input(const std::vector<int> &shape,
-                              std::shared_ptr<RuntimeManager> rtmgr) {
+                             std::shared_ptr<RuntimeManager> rtmgr) {
   nncase::dims_t shape_int64(shape.begin(), shape.end());
-  return nncase::runtime::hrt::create(nncase::dt_float32, shape_int64)
+  return nncase::runtime::hrt::create(
+             std::is_same_v<T, float> ? nncase::dt_float32 : nncase::dt_int32,
+             shape_int64)
       .unwrap_or_throw()
       .impl();
 }
