@@ -10,6 +10,7 @@
 
 #include <memory>
 #include <nncase/runtime/interpreter.h>
+#include <nncase/runtime/runtime_tensor.h>
 #include <nncase/runtime/simple_types.h>
 #include <type_traits>
 
@@ -48,7 +49,7 @@ static nncase::tensor _Input(const std::vector<int> &shape,
   nncase::dims_t shape_int64(shape.begin(), shape.end());
   return nncase::runtime::hrt::create(
              std::is_same_v<T, float> ? nncase::dt_float32 : nncase::dt_int32,
-             shape_int64)
+             shape_int64, nncase::runtime::host_runtime_tensor::pool_shared)
       .unwrap_or_throw()
       .impl();
 }

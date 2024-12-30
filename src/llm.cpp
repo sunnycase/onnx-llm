@@ -7,6 +7,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <nncase/runtime/simple_types.h>
 #include <sstream>
 #include <unordered_set>
 #include <regex>
@@ -290,22 +291,25 @@ nncase::value_t Llm::embedding(const std::vector<int>& input_ids) {
     int seq_len = static_cast<int>(input_ids.size());
     auto inputs_embeds = _Input<float>({seq_len, 1, hidden_size}, runtime_manager_);
     auto inputs_embeds_buffer = inputs_embeds->buffer().as_host().unwrap_or_throw();
-    auto inputs_embeds_mapped = inputs_embeds_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
-    auto inputs_embeds_ptr = inputs_embeds_mapped.buffer().as_span<int16_t>().data();
-    size_t size = hidden_size * sizeof(int16_t);
-    FILE* file = fopen(config_->embedding_file().c_str(), "rb");
-    std::unique_ptr<int16_t[]> buffer(new int16_t[hidden_size]);
-    for (size_t i = 0; i < seq_len; i++) {
-        fseek(file, input_ids[i] * size, SEEK_SET);
-        size_t bytes_read = fread(buffer.get(), 1, size, file);
-        (void)bytes_read;
-        auto ptr = inputs_embeds_ptr + i * hidden_size * 2;
-        for (int j = 0; j < hidden_size; j++) {
-            ptr[j * 2] = 0;
-            ptr[j * 2 + 1] = buffer[j];
+    {
+        auto inputs_embeds_mapped = inputs_embeds_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
+        auto inputs_embeds_ptr = inputs_embeds_mapped.buffer().as_span<int16_t>().data();
+        size_t size = hidden_size * sizeof(int16_t);
+        FILE* file = fopen(config_->embedding_file().c_str(), "rb");
+        std::unique_ptr<int16_t[]> buffer(new int16_t[hidden_size]);
+        for (size_t i = 0; i < seq_len; i++) {
+            fseek(file, input_ids[i] * size, SEEK_SET);
+            size_t bytes_read = fread(buffer.get(), 1, size, file);
+            (void)bytes_read;
+            auto ptr = inputs_embeds_ptr + i * hidden_size * 2;
+            for (int j = 0; j < hidden_size; j++) {
+                ptr[j * 2] = 0;
+                ptr[j * 2 + 1] = buffer[j];
+            }
         }
+        fclose(file);
     }
-    fclose(file);
+    inputs_embeds_buffer.sync(nncase::runtime::sync_write_back, true).unwrap_or_throw();
     return std::move(inputs_embeds);
 }
 
@@ -327,39 +331,45 @@ nncase::value_t Llm::gen_attention_mask(int seq_len) {
     if (config_->attention_mask() == "float") {
         auto attention_mask = _Input<float>({1, 1, seq_len, kv_seq_len}, runtime_manager_);
         auto attention_mask_buffer = attention_mask->buffer().as_host().unwrap_or_throw();
-        auto attention_mask_mapped = attention_mask_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
-        auto ptr = attention_mask_mapped.buffer().as_span<float>().data();
-        for (int i = 0; i < seq_len; i++) {
-            for (int j = 0; j < kv_seq_len; j++) {
-                int row = i + all_seq_len_;
-                ptr[kv_seq_len * i + j] = (j > row) * std::numeric_limits<float>::lowest();
+        {
+            auto attention_mask_mapped = attention_mask_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
+            auto ptr = attention_mask_mapped.buffer().as_span<float>().data();
+            for (int i = 0; i < seq_len; i++) {
+                for (int j = 0; j < kv_seq_len; j++) {
+                    int row = i + all_seq_len_;
+                    ptr[kv_seq_len * i + j] = (j > row) * std::numeric_limits<float>::lowest();
+                }
             }
         }
+        attention_mask_buffer.sync(nncase::runtime::sync_write_back, true).unwrap_or_throw();
         return attention_mask;
     } else {
         auto attention_mask = _Input<int>({1, 1, seq_len, kv_seq_len}, runtime_manager_);
         auto attention_mask_buffer = attention_mask->buffer().as_host().unwrap_or_throw();
-        auto attention_mask_mapped = attention_mask_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
-        auto ptr = attention_mask_mapped.buffer().as_span<int>().data();
-        if (config_->attention_mask() == "glm") {
-            // chatglm
-            for (int i = 0; i < seq_len * kv_seq_len; i++) {
-                ptr[i] = 0;
-            }
-            if (seq_len > 1) {
-                for (int i = 1; i < seq_len; i++) {
-                    ptr[seq_len * i - 1] = 1;
+        {
+            auto attention_mask_mapped = attention_mask_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
+            auto ptr = attention_mask_mapped.buffer().as_span<int>().data();
+            if (config_->attention_mask() == "glm") {
+                // chatglm
+                for (int i = 0; i < seq_len * kv_seq_len; i++) {
+                    ptr[i] = 0;
                 }
-            }
-        } else {
-            bool is_glm2 = config_->attention_mask() == "glm2";
-            for (int i = 0; i < seq_len; i++) {
-                for (int j = 0; j < kv_seq_len; j++) {
-                    int row = i + all_seq_len_;
-                    ptr[seq_len * i + j] = is_glm2 ? j > row : j <= row;
+                if (seq_len > 1) {
+                    for (int i = 1; i < seq_len; i++) {
+                        ptr[seq_len * i - 1] = 1;
+                    }
+                }
+            } else {
+                bool is_glm2 = config_->attention_mask() == "glm2";
+                for (int i = 0; i < seq_len; i++) {
+                    for (int j = 0; j < kv_seq_len; j++) {
+                        int row = i + all_seq_len_;
+                        ptr[seq_len * i + j] = is_glm2 ? j > row : j <= row;
+                    }
                 }
             }
         }
+        attention_mask_buffer.sync(nncase::runtime::sync_write_back, true).unwrap_or_throw();
         return attention_mask;
     }
 }
@@ -369,33 +379,39 @@ nncase::value_t Llm::gen_position_ids(int seq_len) {
         // chatglm
         auto position_ids = _Input<int>({1, 2, seq_len}, runtime_manager_);
         auto position_ids_buffer = position_ids->buffer().as_host().unwrap_or_throw();
-        auto position_ids_mapped = position_ids_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
-        auto ptr = position_ids_mapped.buffer().as_span<int>().data();
-        if (seq_len == 1) {
-            ptr[0] = all_seq_len_ - gen_seq_len_ - 2;
-            ptr[1] = gen_seq_len_ + 1;
-        } else {
-            for (int i = 0; i < seq_len - 1; i++) {
-                ptr[i] = i;
-                ptr[seq_len + i] = 0;
+        {
+            auto position_ids_mapped = position_ids_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
+            auto ptr = position_ids_mapped.buffer().as_span<int>().data();
+            if (seq_len == 1) {
+                ptr[0] = all_seq_len_ - gen_seq_len_ - 2;
+                ptr[1] = gen_seq_len_ + 1;
+            } else {
+                for (int i = 0; i < seq_len - 1; i++) {
+                    ptr[i] = i;
+                    ptr[seq_len + i] = 0;
+                }
+                ptr[seq_len - 1] = seq_len - 2;
+                ptr[2 * seq_len - 1] = 1;
             }
-            ptr[seq_len - 1] = seq_len - 2;
-            ptr[2 * seq_len - 1] = 1;
         }
+        position_ids_buffer.sync(nncase::runtime::sync_write_back, true).unwrap_or_throw();
         return position_ids;
     } else {
         bool is_glm2 = config_->attention_mask() == "glm2";
         auto position_ids = _Input<int>({1, seq_len}, runtime_manager_);
         auto position_ids_buffer = position_ids->buffer().as_host().unwrap_or_throw();
-        auto position_ids_mapped = position_ids_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
-        auto ptr = position_ids_mapped.buffer().as_span<int>().data();
-        if (seq_len == 1) {
-            ptr[0] = is_glm2 ? gen_seq_len_ : all_seq_len_;
-        } else {
-            for (int i = 0; i < seq_len; i++) {
-                ptr[i] = i + all_seq_len_;
+        {
+            auto position_ids_mapped = position_ids_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
+            auto ptr = position_ids_mapped.buffer().as_span<int>().data();
+            if (seq_len == 1) {
+                ptr[0] = is_glm2 ? gen_seq_len_ : all_seq_len_;
+            } else {
+                for (int i = 0; i < seq_len; i++) {
+                    ptr[i] = i + all_seq_len_;
+                }
             }
         }
+        position_ids_buffer.sync(nncase::runtime::sync_write_back, true).unwrap_or_throw();
         return position_ids;
     }
 }
