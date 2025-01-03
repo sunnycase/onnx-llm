@@ -99,7 +99,9 @@ int Llm::sample(nncase::tensor& logits, const std::vector<int>& pre_ids) {
 }
 
 static std::string apply_template(std::string prompt_template, const std::string& content, const std::string& role = "") {
-    if (prompt_template.empty()) return content;
+    std::cout << "Q: " << content << std::endl;
+    if (prompt_template.empty())
+        return content;
     if (!role.empty()) {
         const std::string placeholder = "%r";
         size_t start_pos = prompt_template.find(placeholder);
@@ -203,7 +205,7 @@ std::string Llm::generate(const std::vector<int>& input_ids, std::ostream* os, c
     auto et = std::chrono::system_clock::now();
     std::string output_str = decode(token);
     prefill_us_ = std::chrono::duration_cast<std::chrono::microseconds>(et - st).count();
-    *os << output_str << std::flush;
+    *os << "A: " << output_str << std::flush;
     while (gen_seq_len_ < config_->max_new_tokens()) {
         st = std::chrono::system_clock::now();
         history_ids_.push_back(token);
