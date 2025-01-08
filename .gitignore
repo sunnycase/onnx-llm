@@ -1,3 +1,8 @@
 3rd_party/onnxruntime*
 /build
 /.cache
+model_b*/
+gmodel*/
+/*.log
+/*.zst
+/*.diff
