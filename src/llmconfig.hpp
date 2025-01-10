@@ -94,7 +94,7 @@ public:
     // model file config end >
 
     // < generate config start
-    DEFINE_CONFIG_ACCESSOR(max_new_tokens, int, 512)
+    DEFINE_CONFIG_ACCESSOR(max_new_tokens, int, 200)
     DEFINE_CONFIG_ACCESSOR(reuse_kv, bool, false)
     DEFINE_CONFIG_ACCESSOR(backend_type, std::string, "cpu")
     DEFINE_CONFIG_ACCESSOR(thread_num, int, 4)
