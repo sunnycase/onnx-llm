@@ -8,6 +8,7 @@
 #include <iostream>
 #include <fstream>
 #include <nncase/runtime/simple_types.h>
+#include <nncase/runtime/runtime_op_utility.h>
 #include <sstream>
 #include <unordered_set>
 #include <regex>
@@ -282,6 +283,7 @@ void Llm::print_speed() {
     printf(" decode speed = %.2f tok/s\n", gen_seq_len_ / decode_s);
     printf("   chat speed = %.2f tok/s\n", gen_seq_len_ / total_s);
     printf("##################################\n");
+    nncase::runtime::shrink_memory_pool();
 }
 
 
