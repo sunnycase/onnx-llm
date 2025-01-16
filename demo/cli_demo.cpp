@@ -60,8 +60,9 @@ int main(int argc, const char* argv[]) {
     llm->load();
     if (argc < 3) {
         llm->chat();
+    } else {
+        std::string prompt_file = argv[2];
+        benchmark(llm.get(), prompt_file);
     }
-    std::string prompt_file = argv[2];
-    benchmark(llm.get(), prompt_file);
     return 0;
 }
