@@ -99,6 +99,17 @@ int Llm::sample(nncase::tensor& logits, const std::vector<int>& pre_ids) {
     return token_id;
 }
 
+template<typename T>
+void Llm::dump_memory(const char *info, const T *buf, size_t size)
+{
+    std::cout << info << ": size = " << size << std::endl;
+    for (size_t i = 0; i < size; i++)
+    {
+        std::cout << buf[i] << " ";
+    }
+    std::cout << std::endl;
+}
+
 static std::string apply_template(std::string prompt_template, const std::string& content, const std::string& role = "") {
     // std::cout << "Q: " << content << std::endl;
     if (prompt_template.empty())
@@ -231,6 +242,69 @@ std::string Llm::generate(const std::vector<int>& input_ids, std::ostream* os, c
     return output_str;
 }
 
+std::vector<float> Llm::softmax(const std::vector<float>& logits) {
+    std::vector<float> probabilities(logits.size());
+    float max_logit = *std::max_element(logits.begin(), logits.end()); // 防止数值溢出
+    float sum_exp = 0.0f;
+
+    // 计算 exp(x_i - max_logit) 和 sum(exp(x_i - max_logit))
+    for (size_t i = 0; i < logits.size(); ++i) {
+        probabilities[i] = std::exp(logits[i] - max_logit);
+        sum_exp += probabilities[i];
+    }
+
+    // 归一化得到概率分布
+    for (size_t i = 0; i < probabilities.size(); ++i) {
+        probabilities[i] /= sum_exp;
+    }
+
+    return probabilities;
+}
+
+float Llm::generate(const std::vector<int>& input_ids, const std::vector<int>& target_ids) {
+    prompt_len_ = static_cast<int>(input_ids.size());
+    history_ids_.insert(history_ids_.end(), input_ids.begin(), input_ids.end()); // push to history_ids_
+    auto st = std::chrono::system_clock::now();
+    auto logits = forward(input_ids);
+    auto logits_buffer = logits->buffer().as_host().unwrap_or_throw();
+    auto logits_mapped = logits_buffer.map(nncase::runtime::map_read).unwrap_or_throw();
+    auto scores = logits_mapped.buffer().as_span<float>();
+    auto shape = logits->shape();
+    auto size = std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<int64_t>());
+
+    // dump to bin
+    // char file_name[64] = "\0";
+    // snprintf(file_name, sizeof(file_name) / sizeof(file_name[0]), "tmp/logits_%08lu.bin", idx);
+    // std::ofstream ofs(file_name, std::ios::out | std::ios::binary);
+    // ofs.write(reinterpret_cast<const char *>(&scores[0]), size * sizeof(float));
+    // ofs.close();
+
+    // dump_memory("dump logits", reinterpret_cast<const float *>(&scores[0]), 128);
+
+    // 4.2 计算 softmax 概率分布
+    const float *p_scores = reinterpret_cast<const float *>(&scores[0]);
+    std::vector<float> v_logits(p_scores, p_scores + 151936);
+    std::vector<float> probabilities = softmax(v_logits);
+
+    // 获取真实类别的概率
+    float true_class_prob = probabilities[target_ids[0]];
+    // std::cout << "true_class_prob = " << true_class_prob << std::endl;
+
+    // 计算交叉熵损失
+    float loss = 0.f;
+    if (true_class_prob > 0)
+    {
+        loss += -std::log(true_class_prob);
+    }
+    else
+    {
+        // 如果概率为 0，避免 log(0) 的无穷大问题
+        loss += -std::log(std::numeric_limits<float>::min());
+    }
+
+    return loss;
+}
+
 std::vector<int> Llm::tokenizer(const std::string& query) {
     auto prompt = apply_prompt_template(query);
     auto input_ids = tokenizer_->encode(prompt);
@@ -265,6 +339,27 @@ std::string Llm::response(const std::vector<PromptItem>& chat_prompts, std::ostr
     auto input_ids = tokenizer_->encode(prompt);
     // printf("input_ids (%lu): ", input_ids.size()); for (auto id : input_ids) printf("%d, ", id); printf("\n");
     return generate(input_ids, os, end_with);
+}
+
+template <typename T>
+void Llm::read_binary_file(const std::string &file, std::vector<T> &v)
+{
+    std::ifstream ifs(file, std::ios::binary);
+    ifs.seekg(0, ifs.end);
+    size_t len = ifs.tellg();
+    v.resize(len / sizeof(T));
+    ifs.seekg(0, ifs.beg);
+    ifs.read(reinterpret_cast<char *>(v.data()), len);
+    ifs.close();
+}
+
+float Llm::response(const std::string& input_id_file, const std::string& target_id_file) {
+    generate_init();
+    std::vector<int> input_ids;
+    std::vector<int> target_ids;
+    read_binary_file(input_id_file, input_ids);
+    read_binary_file(target_id_file, target_ids);
+    return generate(input_ids, target_ids);
 }
 
 void Llm::print_speed() {

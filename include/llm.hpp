@@ -81,9 +81,11 @@ public:
     std::string apply_chat_template(const std::vector<PromptItem>& chat_prompts) const;
     std::string response(const std::string& user_content, std::ostream* os = &std::cout, const char* end_with = nullptr);
     std::string response(const std::vector<PromptItem>& chat_prompts, std::ostream* os = &std::cout, const char* end_with = nullptr);
+    float response(const std::string& input_id_file, const std::string& target_id_file);
     void generate_init();
     std::string generate(const std::vector<int>& input_ids, std::ostream* os, const char* end_with);
     std::vector<int> generate(const std::vector<int>& input_ids, int max_new_tokens = -1);
+    float generate(const std::vector<int>& input_ids, const std::vector<int>& target_ids);
     void print_speed();
     // config function
     std::string dump_config();
@@ -114,6 +116,11 @@ protected:
     virtual nncase::value_t embedding(const std::vector<int>& input_ids);
     virtual nncase::value_t gen_attention_mask(int seq_len);
     virtual nncase::value_t gen_position_ids(int seq_len);
+    template <typename T>
+    void read_binary_file(const std::string &file_name, std::vector<T> &v);
+    template <typename T>
+    void dump_memory(const char *info, const T *buf, size_t size);
+    std::vector<float> softmax(const std::vector<float> &logits);
 };
 // Llm end
 

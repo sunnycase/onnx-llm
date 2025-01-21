@@ -8,6 +8,8 @@
 #include "llm.hpp"
 #include <fstream>
 #include <stdlib.h>
+#include <sys/stat.h>
+#include <dirent.h>
 
 void benchmark(Llm* llm, std::string prompt_file) {
     std::cout << "prompt file is " << prompt_file << std::endl;
@@ -49,9 +51,65 @@ void benchmark(Llm* llm, std::string prompt_file) {
     printf("##################################\n");
 }
 
+std::vector<std::string> get_input_list(const char *dataset_path) {
+    std::vector<std::string> v;
+    v.reserve(10000);
+
+    DIR *d;
+    struct dirent *dir;
+    if ((d = opendir(dataset_path)) != NULL)
+    {
+        std::string base(dataset_path);
+        while ((dir = readdir(d)) != NULL)
+        {
+            struct stat statbuf;
+            std::string file_name = base + "/" + std::string(dir->d_name);
+            stat(file_name.c_str(), &statbuf);
+            if (S_ISREG(statbuf.st_mode))
+            {
+                v.push_back(file_name);
+            }
+        }
+        closedir(d);
+    }
+    else
+    {
+        printf("Unable to open %s\n", dataset_path);
+    }
+
+    return v;
+}
+
+
+void evaluate(Llm* llm, const std::string &dataset_path, size_t num) {
+#if 0
+    // read dataset directory(297909 files)
+    auto file_list = get_input_list(dataset_path.c_str());
+    std::sort(file_list.begin(), file_list.end());
+    std::cout << "file_list.size() = " << file_list.size() << std::endl;
+    assert(num <= file_list.size());
+#endif
+    float loss_sum = 0.f;
+    for (size_t i = 0; i < num; i++)
+    {
+        char input_id_file_buf[128] ={0};
+        snprintf(input_id_file_buf, sizeof(input_id_file_buf) / sizeof(input_id_file_buf[0]), "%s/input_id/input_id_%08ld.bin", dataset_path.c_str(), i);
+
+        char target_id_file_buf[128] ={0};
+        snprintf(target_id_file_buf, sizeof(target_id_file_buf) / sizeof(target_id_file_buf[0]), "%s/target_id/target_id_%08ld.bin", dataset_path.c_str(), i);
+        auto loss = llm->response(input_id_file_buf, target_id_file_buf);
+        // std::cout << "i = " << i << ", loss = " << loss << std::endl;
+        loss_sum += loss;
+    }
+
+    auto loss_ave = loss_sum / num;
+    float ppl = std::exp(loss_ave);
+    std::cout << "loss_ave = " << loss_ave << ", ppl = " << ppl << std::endl;
+}
+
 int main(int argc, const char* argv[]) {
     if (argc < 2) {
-        std::cout << "Usage: " << argv[0] << " model_dir <prompt.txt>" << std::endl;
+        std::cout << "Usage: " << argv[0] << " model_dir <prompt.txt | dataset_path number>" << std::endl;
         return 0;
     }
     std::string model_dir = argv[1];
@@ -60,9 +118,12 @@ int main(int argc, const char* argv[]) {
     llm->load();
     if (argc < 3) {
         llm->chat();
-    } else {
+    } else if (argc == 3){
         std::string prompt_file = argv[2];
         benchmark(llm.get(), prompt_file);
+    } else {
+        evaluate(llm.get(), argv[2], atoi(argv[3]));
     }
+
     return 0;
 }
