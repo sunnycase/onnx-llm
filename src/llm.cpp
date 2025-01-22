@@ -154,7 +154,7 @@ void Llm::chat() {
         history.push_back(std::make_pair("system", "You are a helpful assistant."));
         std::cout << "\nQ: ";
         std::string user_str;
-        std::cin >> user_str;
+        std::getline(std::cin, user_str);
         if (user_str == "/exit") {
             break;
         }
