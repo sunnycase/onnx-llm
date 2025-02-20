@@ -6,3 +6,9 @@ gmodel*/
 /*.log
 /*.zst
 /*.diff
+
+t2s.json
+*.ocd2
+Qwen2.5-0.5B-Instruct/
+calib
+.vscode
