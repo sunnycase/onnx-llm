@@ -614,7 +614,7 @@ bool HuggingfaceTokenizer::load_vocab(std::ifstream& tok_file) {
                             utf8_to_wstring(line.substr(d + 1))}, i});
     }
     // bytes_to_unicode
-     auto _insert_range = [=](int start, int end) {
+     auto _insert_range = [this](int start, int end) {
         for (int c = start; c <= end; c++) {
             b2u_.insert({uint8_t(c), wchar_t(c)});
         }

@@ -9,6 +9,7 @@
 #include <fstream>
 #include <nncase/runtime/simple_types.h>
 #include <nncase/runtime/runtime_op_utility.h>
+#include <nncase/runtime/util.h>
 #include <sstream>
 #include <unordered_set>
 #include <regex>
@@ -77,7 +78,7 @@ int Llm::sample(nncase::tensor& logits, const std::vector<int>& pre_ids) {
     std::unordered_set<int> ids_set(pre_ids.begin(), pre_ids.end());
     auto logits_buffer = logits->buffer().as_host().unwrap_or_throw();
     auto logits_mapped = logits_buffer.map(nncase::runtime::map_read).unwrap_or_throw();
-    auto scores = logits_mapped.buffer().as_span<float>();
+    auto scores = nncase::runtime::as_span<float>(logits_mapped.buffer());
     auto shape = logits->shape();
     auto size = std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<int64_t>());
     // repetition penalty
@@ -268,7 +269,7 @@ float Llm::generate(const std::vector<int>& input_ids, const std::vector<int>& t
     auto logits = forward(input_ids);
     auto logits_buffer = logits->buffer().as_host().unwrap_or_throw();
     auto logits_mapped = logits_buffer.map(nncase::runtime::map_read).unwrap_or_throw();
-    auto scores = logits_mapped.buffer().as_span<float>();
+    auto scores = nncase::runtime::as_span<float>(logits_mapped.buffer());
     auto shape = logits->shape();
     auto size = std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<int64_t>());
 
@@ -395,7 +396,7 @@ nncase::value_t Llm::embedding(const std::vector<int>& input_ids) {
     auto inputs_embeds_buffer = inputs_embeds->buffer().as_host().unwrap_or_throw();
     {
         auto inputs_embeds_mapped = inputs_embeds_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
-        auto inputs_embeds_ptr = inputs_embeds_mapped.buffer().as_span<int16_t>().data();
+        auto inputs_embeds_ptr = nncase::runtime::as_span<int16_t>(inputs_embeds_mapped.buffer()).data();
         size_t size = hidden_size * sizeof(int16_t);
         FILE* file = fopen(config_->embedding_file().c_str(), "rb");
         std::unique_ptr<int16_t[]> buffer(new int16_t[hidden_size]);
@@ -435,7 +436,7 @@ nncase::value_t Llm::gen_attention_mask(int seq_len) {
         auto attention_mask_buffer = attention_mask->buffer().as_host().unwrap_or_throw();
         {
             auto attention_mask_mapped = attention_mask_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
-            auto ptr = attention_mask_mapped.buffer().as_span<float>().data();
+            auto ptr = nncase::runtime::as_span<float>(attention_mask_mapped.buffer()).data();
             for (int i = 0; i < seq_len; i++) {
                 for (int j = 0; j < kv_seq_len; j++) {
                     int row = i + all_seq_len_;
@@ -450,7 +451,7 @@ nncase::value_t Llm::gen_attention_mask(int seq_len) {
         auto attention_mask_buffer = attention_mask->buffer().as_host().unwrap_or_throw();
         {
             auto attention_mask_mapped = attention_mask_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
-            auto ptr = attention_mask_mapped.buffer().as_span<int>().data();
+            auto ptr = nncase::runtime::as_span<int>(attention_mask_mapped.buffer()).data();
             if (config_->attention_mask() == "glm") {
                 // chatglm
                 for (int i = 0; i < seq_len * kv_seq_len; i++) {
@@ -483,7 +484,7 @@ nncase::value_t Llm::gen_position_ids(int seq_len) {
         auto position_ids_buffer = position_ids->buffer().as_host().unwrap_or_throw();
         {
             auto position_ids_mapped = position_ids_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
-            auto ptr = position_ids_mapped.buffer().as_span<int>().data();
+            auto ptr = nncase::runtime::as_span<int>(position_ids_mapped.buffer()).data();
             if (seq_len == 1) {
                 ptr[0] = all_seq_len_ - gen_seq_len_ - 2;
                 ptr[1] = gen_seq_len_ + 1;
@@ -504,7 +505,7 @@ nncase::value_t Llm::gen_position_ids(int seq_len) {
         auto position_ids_buffer = position_ids->buffer().as_host().unwrap_or_throw();
         {
             auto position_ids_mapped = position_ids_buffer.map(nncase::runtime::map_write).unwrap_or_throw();
-            auto ptr = position_ids_mapped.buffer().as_span<int>().data();
+            auto ptr = nncase::runtime::as_span<int>(position_ids_mapped.buffer()).data();
             if (seq_len == 1) {
                 ptr[0] = is_glm2 ? gen_seq_len_ : all_seq_len_;
             } else {

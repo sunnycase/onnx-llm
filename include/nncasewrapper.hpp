@@ -12,6 +12,7 @@
 #include <nncase/runtime/interpreter.h>
 #include <nncase/runtime/runtime_tensor.h>
 #include <nncase/runtime/simple_types.h>
+#include <nncase/runtime/stream.h>
 #include <nncase/runtime/util.h>
 #include <type_traits>
 #include <iostream>
@@ -34,7 +35,8 @@ public:
   size_t count = 0;
   Module(std::shared_ptr<RuntimeManager> runtime, const std::string &path) {
     std::ifstream ifs(path, std::ios::binary);
-    interpreter_.load_model(ifs).unwrap_or_throw();
+    nncase::runtime::std_istream stream(ifs);
+    interpreter_.load_model(stream).unwrap_or_throw();
     entry_function_ = interpreter_.entry_function().unwrap_or_throw();
   }
   void dump_input(std::ofstream &desc_file, nncase::value_t &input_data, std::string input_name, std::string dtype, size_t count)
