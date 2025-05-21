@@ -14,4 +14,4 @@
  */
 #pragma once
 #define NNCASE_VERSION "2.0.0"
-#define NNCASE_VERSION_SUFFIX "-release/k800/alpha1-105-g6f4716e7a-dirty"
+#define NNCASE_VERSION_SUFFIX "-release/k800/alpha1-85-g13b8373a3-dirty"
