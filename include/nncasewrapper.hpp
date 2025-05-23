@@ -17,6 +17,7 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+#include <chrono>
 
 namespace fs = std::filesystem;
 
@@ -34,7 +35,11 @@ public:
   size_t count = 0;
   Module(std::shared_ptr<RuntimeManager> runtime, const std::string &path) {
     std::ifstream ifs(path, std::ios::binary);
+    auto start = std::chrono::steady_clock::now();
     interpreter_.load_model(ifs).unwrap_or_throw();
+    auto stop = std::chrono::steady_clock::now();
+    double elapsed_ms = std::chrono::duration<double,std::milli>(stop - start).count();
+    std::cout << "load_model took " << elapsed_ms << " ms" << std::endl;
     entry_function_ = interpreter_.entry_function().unwrap_or_throw();
   }
   void dump_input(std::ofstream &desc_file, nncase::value_t &input_data, std::string input_name, std::string dtype, size_t count)

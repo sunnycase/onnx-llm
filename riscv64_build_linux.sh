@@ -21,4 +21,4 @@ cmake -DCMAKE_BUILD_TYPE=${build_type}           \
 make -j
 popd
 
-cp ${build}/cli_demo /home/share/nfsroot/k230/k230_llm/onnx-llm/linux
+cp ${build}/cli_demo /home/share/nfsroot/k230/k230_llm/onnx-llm/linux_qwen3.0

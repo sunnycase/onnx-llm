@@ -111,7 +111,6 @@ void Llm::dump_memory(const char *info, const T *buf, size_t size)
 }
 
 static std::string apply_template(std::string prompt_template, const std::string& content, const std::string& role = "") {
-    // std::cout << "Q: " << content << std::endl;
     if (prompt_template.empty())
         return content;
     if (!role.empty()) {
@@ -140,7 +139,16 @@ std::string Llm::apply_chat_template(const std::vector<PromptItem>& chat_prompts
         prompt_result += apply_template(chat_template, iter->second, iter->first);
     }
     if (iter->first == "user") {
-        prompt_result += apply_prompt_template(iter->second);
+        std::string s = iter->second;
+        std::string suffix = "/no_think";
+        size_t pos = s.rfind(suffix);
+        if (pos != std::string::npos) {
+            s = s.substr(0, pos);
+        }
+        prompt_result += apply_prompt_template(s);
+        if (pos != std::string::npos) {
+            prompt_result += "\n<think>\n\n</think>\n\n";
+        }
     } else {
         prompt_result += apply_template(chat_template, iter->second, iter->first);
     }
@@ -335,7 +343,6 @@ std::string Llm::response(const std::vector<PromptItem>& chat_prompts, std::ostr
     if (config_->reuse_kv() && all_seq_len_ > 0) {
         prompt = "<|im_end|>\n" + prompt;
     }
-    // std::cout << "# prompt : " << prompt << std::endl;
     auto input_ids = tokenizer_->encode(prompt);
     // printf("input_ids (%lu): ", input_ids.size()); for (auto id : input_ids) printf("%d, ", id); printf("\n");
     return generate(input_ids, os, end_with);
