@@ -6,3 +6,6 @@ gmodel*/
 /*.log
 /*.zst
 /*.diff
+models/
+.vscode/
+CMakeUserPresets.json

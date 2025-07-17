@@ -106,7 +106,6 @@ protected:
     std::shared_ptr<LlmConfig> config_;
     std::shared_ptr<Tokenizer> tokenizer_;
     std::vector<int> key_value_shape_ = {};
-    nncase::value_t past_key_values_ {nullptr};
     std::shared_ptr<RuntimeManager> runtime_manager_;
     std::shared_ptr<Module> module_;
     void init_runtime();
